@@ -108,7 +108,7 @@ class BrushSupport(Tool):
                 self._painter.setPen(self._endcap_pen)
                 self._painter.drawEllipse(self._last_x - self.brush_size / 2, self._last_y - self.brush_size / 2, self.brush_size, self.brush_size) #Paint another ellipse when you're releasing as endcap.
                 self._painter = None
-            QtApplication.getInstance().getController().getView("SolidView").setExtraOverhang(self._draw_buffer)
+            #QtApplication.getInstance().getController().getView("SolidView").setExtraOverhang(self._draw_buffer)
             self._constructSupport(self._draw_buffer) #Actually place the support.
             self._resetDrawBuffer()
         elif event.type == Event.MouseMoveEvent and self._painter is not None: #While dragging.
@@ -117,7 +117,7 @@ class BrushSupport(Tool):
             self._painter.drawLine(self._last_x, self._last_y, new_x, new_y)
             self._last_x = new_x
             self._last_y = new_y
-            QtApplication.getInstance().getController().getView("SolidView").setExtraOverhang(self._draw_buffer)
+            #QtApplication.getInstance().getController().getView("SolidView").setExtraOverhang(self._draw_buffer)
 
     try:
         _basestring = basestring
@@ -130,7 +130,7 @@ class BrushSupport(Tool):
             qimage = _qt.QImage(qimage)
         return _qimageview(qimage)
 
-    def raw_view(qimage):
+    def _raw_view(qimage):
         """Returns raw 2D view of the given QImage_'s memory.  The result
         will be a 2-dimensional numpy.ndarray with an appropriately sized
         integral dtype.  (This function is not intented to be used
@@ -142,7 +142,7 @@ class BrushSupport(Tool):
         :rtype: numpy.ndarray_ with shape (height, width)"""
         return _qimage_or_filename_view(qimage)
     
-    def recarray_view(qimage):
+    def _recarray_view(qimage):
         """Returns recarray_ view of a given 32-bit color QImage_'s
         memory.
 
@@ -190,12 +190,11 @@ class BrushSupport(Tool):
         camera = CuraApplication.getInstance().getController().getScene().getActiveCamera()
 
         #to_support = qimage2ndarray.raw_view(buffer)
-        
-        to_support= _qimageview(_qt.QImage(buffer))
-    
+        #to_support= _qimageview(_qt.QImage(buffer))
+        to_support = self._raw_view(buffer)
     
         #depth = qimage2ndarray.recarray_view(depth_image)
-        depth = recarray_view(depth_image)
+        depth = self._recarray_view(depth_image)
         
         depth.a = 0 #Discard alpha channel.
         depth = depth.view(dtype = _np.int32).astype(_np.float32) / 1000 #Conflate the R, G and B channels to one 24-bit (cast to 32) float. Divide by 1000 to get mm.
