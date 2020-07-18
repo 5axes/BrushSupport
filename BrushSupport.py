@@ -7,16 +7,17 @@ import numpy.linalg #To project window coordinates onto the scene.
 from PyQt5.QtCore import Qt #For shortcut keys and colours.
 from PyQt5.QtGui import QBrush, QColor, QCursor, QImage, QPainter, QPen, QPixmap #Drawing on a temporary buffer until we're ready to process the area of custom support, and changing the cursor.
 
+# ---------
 # import qimage2ndarray #To convert QImage to Numpy arrays.
-
+# https://github.com/hmeine/qimage2ndarray
 import sys as _sys
 import numpy as _np
 
 from .dynqt import QtGui as _qt
-
 from .dynqt import qt as _qt_driver
 from .qimageview_python import qimageview as _qimageview
 from . import qrgb_polyfill as _polyfill
+# ---------
 
 
 from typing import Optional, Tuple
