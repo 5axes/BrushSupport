@@ -2,11 +2,23 @@
 # Cura is released under the terms of the LGPLv3 or higher.
 
 import math #To create the circular cursor.
-import numpy #To process coordinates in bulk.
+#import numpy #To process coordinates in bulk.
 import numpy.linalg #To project window coordinates onto the scene.
 from PyQt5.QtCore import Qt #For shortcut keys and colours.
 from PyQt5.QtGui import QBrush, QColor, QCursor, QImage, QPainter, QPen, QPixmap #Drawing on a temporary buffer until we're ready to process the area of custom support, and changing the cursor.
-import qimage2ndarray #To convert QImage to Numpy arrays.
+
+# import qimage2ndarray #To convert QImage to Numpy arrays.
+
+import sys as _sys
+import numpy as _np
+
+from .dynqt import QtGui as _qt
+
+from .dynqt import qt as _qt_driver
+from .qimageview_python import qimageview as _qimageview
+from . import qrgb_polyfill as _polyfill
+
+
 from typing import Optional, Tuple
 
 from cura.CuraApplication import CuraApplication #To get the camera and settings.
@@ -15,6 +27,8 @@ from cura.PickingPass import PickingPass
 from cura.Scene.BuildPlateDecorator import BuildPlateDecorator #To put the scene node on the correct build plate.
 from cura.Scene.CuraSceneNode import CuraSceneNode #To create a scene node that causes the support to be drawn/erased.
 from cura.Scene.SliceableObjectDecorator import SliceableObjectDecorator #To create a scene node that can be sliced.
+
+from UM.Application import Application
 from UM.Event import Event, MouseEvent #To register mouse movements.
 from UM.Logger import Logger
 from UM.Mesh.MeshBuilder import MeshBuilder #To create the support structure in 3D.
@@ -25,7 +39,7 @@ from UM.Scene.Iterator.BreadthFirstIterator import BreadthFirstIterator #To find
 from UM.Settings.SettingInstance import SettingInstance #To set the correct support overhang angle for the support mesh.
 from UM.Tool import Tool #The interface we're implementing.
 
-class CustomSupport(Tool):
+class BrushSupport(Tool):
     #Diameter of the brush.
     brush_size = 20
 
@@ -62,11 +76,13 @@ class CustomSupport(Tool):
     def event(self, event: Event):
         if event.type == Event.ToolActivateEvent:
             active_view = QtApplication.getInstance().getController().getActiveView()
+
             if active_view is not None:
                 self._previous_view = active_view.getPluginId()
             QtApplication.getInstance().getController().setActiveView("SolidView")
-            QtApplication.getInstance().getController().disableSelection()
+            #QtApplication.getInstance().getController().disableSelection()
             QtApplication.getInstance().setOverrideCursor(self._cursor)
+
         elif event.type == Event.ToolDeactivateEvent:
             if self._previous_view is not None:
                 QtApplication.getInstance().getController().setActiveView(self._previous_view)
@@ -83,7 +99,8 @@ class CustomSupport(Tool):
             self._painter.setPen(self._endcap_pen)
             self._last_x, self._last_y = self._cursorCoordinates()
             self._painter.drawEllipse(self._last_x - self.brush_size / 2, self._last_y - self.brush_size / 2, self.brush_size, self.brush_size) #Paint an initial ellipse at the spot you're clicking.
-            QtApplication.getInstance().getController().getView("SolidView").setExtraOverhang(self._draw_buffer)
+            #QtApplication.getInstance().getController().getView("SolidView").setExtraOverhang(self._draw_buffer)
+            
         elif event.type == Event.MouseReleaseEvent and MouseEvent.LeftButton in event.buttons:
             #Complete drawing.
             self._last_x, self._last_y = self._cursorCoordinates()
@@ -102,6 +119,67 @@ class CustomSupport(Tool):
             self._last_y = new_y
             QtApplication.getInstance().getController().getView("SolidView").setExtraOverhang(self._draw_buffer)
 
+    try:
+        _basestring = basestring
+    except NameError:
+        # 'basestring' undefined, must be Python 3
+        _basestring = str
+    
+    def _qimage_or_filename_view(qimage):
+        if isinstance(qimage, _basestring):
+            qimage = _qt.QImage(qimage)
+        return _qimageview(qimage)
+
+    def raw_view(qimage):
+        """Returns raw 2D view of the given QImage_'s memory.  The result
+        will be a 2-dimensional numpy.ndarray with an appropriately sized
+        integral dtype.  (This function is not intented to be used
+        directly, but used internally by the other -- more convenient --
+        view creation functions.)
+
+        :param qimage: image whose memory shall be accessed via NumPy
+        :type qimage: QImage_
+        :rtype: numpy.ndarray_ with shape (height, width)"""
+        return _qimage_or_filename_view(qimage)
+    
+    def recarray_view(qimage):
+        """Returns recarray_ view of a given 32-bit color QImage_'s
+        memory.
+
+        The result is a 2D array with a complex record dtype, offering the
+        named fields 'r','g','b', and 'a' and corresponding long names.
+        Thus, each color components can be accessed either via string
+        indexing or via attribute lookup (through numpy.recarray_):
+
+        For your convenience, `qimage` may also be a filename, see
+        `Loading and Saving Images`_ in the documentation.
+
+        >>> from PyQt4.QtGui import QImage, qRgb
+        >>> qimg = QImage(320, 240, QImage.Format_ARGB32)
+        >>> qimg.fill(qRgb(12,34,56))
+        >>>
+        >>> import qimage2ndarray
+        >>> v = qimage2ndarray.recarray_view(qimg)
+        >>>
+        >>> red = v["r"]
+        >>> red[10,10]
+        12
+        >>> pixel = v[10,10]
+        >>> pixel["r"]
+        12
+        >>> (v.g == v["g"]).all()
+        True
+        >>> (v.alpha == 255).all()
+        True
+
+        :param qimage: image whose memory shall be accessed via NumPy
+        :type qimage: QImage_ with 32-bit pixel type
+        :rtype: numpy.ndarray_ with shape (height, width) and dtype :data:`bgra_dtype`"""
+        raw = _qimage_or_filename_view(qimage)
+        if raw.itemsize != 4:
+            raise ValueError("For rgb_view, the image must have 32 bit pixel size (use RGB32, ARGB32, or ARGB32_Premultiplied)")
+        return raw.view(bgra_dtype, _np.recarray)
+    
     ##  Construct the actual support intersection structure from an image.
     #   \param buffer The temporary buffer indicating where support should be
     #   added and where it should be removed.
@@ -111,41 +189,47 @@ class CustomSupport(Tool):
         depth_image = depth_pass.getOutput()
         camera = CuraApplication.getInstance().getController().getScene().getActiveCamera()
 
-        to_support = qimage2ndarray.raw_view(buffer)
-        depth = qimage2ndarray.recarray_view(depth_image)
+        #to_support = qimage2ndarray.raw_view(buffer)
+        
+        to_support= _qimageview(_qt.QImage(buffer))
+    
+    
+        #depth = qimage2ndarray.recarray_view(depth_image)
+        depth = recarray_view(depth_image)
+        
         depth.a = 0 #Discard alpha channel.
-        depth = depth.view(dtype = numpy.int32).astype(numpy.float32) / 1000 #Conflate the R, G and B channels to one 24-bit (cast to 32) float. Divide by 1000 to get mm.
-        support_positions_2d = numpy.array(numpy.where(numpy.bitwise_and(to_support == 255, depth < 16777))) #All the 2D coordinates on the screen where we want support. The 16777 is for points that don't land on a model.
-        support_depths = numpy.take(depth, support_positions_2d[0, :] * depth.shape[1] + support_positions_2d[1, :]) #The depth at those pixels.
+        depth = depth.view(dtype = _np.int32).astype(_np.float32) / 1000 #Conflate the R, G and B channels to one 24-bit (cast to 32) float. Divide by 1000 to get mm.
+        support_positions_2d = _np.array(_np.where(_np.bitwise_and(to_support == 255, depth < 16777))) #All the 2D coordinates on the screen where we want support. The 16777 is for points that don't land on a model.
+        support_depths = _np.take(depth, support_positions_2d[0, :] * depth.shape[1] + support_positions_2d[1, :]) #The depth at those pixels.
         support_positions_2d = support_positions_2d.transpose() #We want rows with pixels, not columns with pixels.
         if len(support_positions_2d) == 0:
             Logger.log("i", "Support was not drawn on the surface of any objects. Not creating support.")
             return
         support_positions_2d[:, [0, 1]] = support_positions_2d[:, [1, 0]] #Swap columns to get OpenGL's coordinate system.
-        camera_viewport = numpy.array([camera.getViewportWidth(), camera.getViewportHeight()])
+        camera_viewport = _np.array([camera.getViewportWidth(), camera.getViewportHeight()])
         support_positions_2d = support_positions_2d * 2.0 / camera_viewport - 1.0 #Scale to view coordinates (range -1 to 1).
-        inverted_projection = numpy.linalg.inv(camera.getProjectionMatrix().getData())
+        inverted_projection = _np.linalg.inv(camera.getProjectionMatrix().getData())
         transformation = camera.getWorldTransformation().getData()
         transformation[:, 1] = -transformation[:, 1] #Invert Z to get OpenGL's coordinate system.
 
         #For each pixel, get the near and far plane.
-        near = numpy.ndarray((support_positions_2d.shape[0], 4))
+        near = _np.ndarray((support_positions_2d.shape[0], 4))
         near.fill(1)
         near[0: support_positions_2d.shape[0], 0: support_positions_2d.shape[1]] = support_positions_2d
         near[:, 2].fill(-1)
-        near = numpy.dot(inverted_projection, near.transpose())
-        near = numpy.dot(transformation, near)
+        near = _np.dot(inverted_projection, near.transpose())
+        near = _np.dot(transformation, near)
         near = near[0:3] / near[3]
-        far = numpy.ndarray((support_positions_2d.shape[0], 4))
+        far = _np.ndarray((support_positions_2d.shape[0], 4))
         far.fill(1)
         far[0: support_positions_2d.shape[0], 0: support_positions_2d.shape[1]] = support_positions_2d
-        far = numpy.dot(inverted_projection, far.transpose())
-        far = numpy.dot(transformation, far)
+        far = _np.dot(inverted_projection, far.transpose())
+        far = _np.dot(transformation, far)
         far = far[0:3] / far[3]
 
         #Direction is from near plane pixel to far plane pixel, normalised.
         direction = near - far
-        direction /= numpy.linalg.norm(direction, axis = 0)
+        direction /= _np.linalg.norm(direction, axis = 0)
 
         #Final position is in the direction of the pixel, moving with <depth> mm away from the camera position.
         support_positions_3d = (support_depths - 1) * direction #We want the support to appear just before the surface, not behind the surface, so - 1.
@@ -157,8 +241,8 @@ class CustomSupport(Tool):
         #This mesh consists of a diamond-shape for each position that we traced.
         n = support_positions_3d.shape[0]
         Logger.log("i", "Adding support in {num_pixels} locations.".format(num_pixels = n))
-        vertices = support_positions_3d.copy().astype(numpy.float32)
-        vertices = numpy.resize(vertices, (n * 6, support_positions_3d.shape[1])) #Resize will repeat all coordinates 6 times.
+        vertices = support_positions_3d.copy().astype(_np.float32)
+        vertices = _np.resize(vertices, (n * 6, support_positions_3d.shape[1])) #Resize will repeat all coordinates 6 times.
         #For each position, create a diamond shape around the position with 6 vertices.
         vertices[n * 0: n * 1, 0] -= support_depths * 0.001 * self.globule_size #First corner (-x, +y).
         vertices[n * 0: n * 1, 2] += support_depths * 0.001 * self.globule_size
@@ -172,9 +256,9 @@ class CustomSupport(Tool):
         vertices[n * 5: n * 6, 1] -= support_depths * 0.001 * self.globule_size #Bottom side.
 
         #Create the faces of the diamond.
-        indices = numpy.arange(n, dtype = numpy.int32)
-        indices = numpy.kron(indices, numpy.ones((3, 1))).astype(numpy.int32).transpose()
-        indices = numpy.resize(indices, (n * 8, 3)) #Creates 8 triangles using 3 times the same vertex, for each position: [[0, 0, 0], [1, 1, 1], ... , [0, 0, 0], [1, 1, 1], ... ]
+        indices = _np.arange(n, dtype = _np.int32)
+        indices = _np.kron(indices, _np.ones((3, 1))).astype(_np.int32).transpose()
+        indices = _np.resize(indices, (n * 8, 3)) #Creates 8 triangles using 3 times the same vertex, for each position: [[0, 0, 0], [1, 1, 1], ... , [0, 0, 0], [1, 1, 1], ... ]
 
         #indices[n * 0: n * 1, 0] += n * 0 #First corner.
         indices[n * 0: n * 1, 1] += n * 1 #Second corner.
@@ -214,7 +298,7 @@ class CustomSupport(Tool):
 
         #Create the scene node.
         scene = CuraApplication.getInstance().getController().getScene()
-        new_node = CuraSceneNode(parent = scene.getRoot(), name = "CustomSupport")
+        new_node = CuraSceneNode(parent = scene.getRoot(), name = "BrushSupport")
         new_node.setSelectable(False)
         new_node.setMeshData(builder.build())
         new_node.addDecorator(BuildPlateDecorator(CuraApplication.getInstance().getMultiBuildPlateModel().activeBuildPlate))

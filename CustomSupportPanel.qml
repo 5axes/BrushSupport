@@ -8,34 +8,26 @@ import UM 1.1 as UM
 
 Item {
     id: base
-
-    UM.I18nCatalog
-    {
-        id: catalog
-        name: "cura"
-    }
-
     width: childrenRect.width
     height: childrenRect.height
+    UM.I18nCatalog { id: catalog; name: "cura"}
 
     Button
     {
-        id: addSupportButton
-        anchors.left: parent.left
-        text: catalog.i18nc("@action:button", "Add support")
-        iconSource: "add_support.svg"
-
-        style: UM.Theme.styles.tool_button
+        id: addSupportButton;
+        anchors.left: parent.left;
+        text: catalog.i18nc("@action:button", "Add support");
+        iconSource: "add_support.svg";
+        style: UM.Theme.styles.tool_button;
         z: 1
     }
     Button
     {
-        id: removeSupportButton
-        anchors.left: addSupportButton.right
-        anchors.leftMargin: UM.Theme.getSize("default_margin").width
-        text: catalog.i18nc("@action:button", "Remove support")
-        iconSource: "remove_support.svg"
-
+        id: removeSupportButton;
+        anchors.left: addSupportButton.right;
+        anchors.leftMargin: UM.Theme.getSize("default_margin").width;
+        text: catalog.i18nc("@action:button", "Remove support");
+        iconSource: "remove_support.svg";
         style: UM.Theme.styles.tool_button
     }
 }
