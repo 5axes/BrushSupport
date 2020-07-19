@@ -100,7 +100,7 @@ class BrushSupport(Tool):
             self._painter.setPen(self._endcap_pen)
             self._last_x, self._last_y = self._cursorCoordinates()
             self._painter.drawEllipse(self._last_x - self.brush_size / 2, self._last_y - self.brush_size / 2, self.brush_size, self.brush_size) #Paint an initial ellipse at the spot you're clicking.
-            #QtApplication.getInstance().getController().getView("SolidView").setExtraOverhang(self._draw_buffer)
+            QtApplication.getInstance().getController().getView("SolidView").setExtraOverhang(self._draw_buffer)
             
         elif event.type == Event.MouseReleaseEvent and MouseEvent.LeftButton in event.buttons:
             #Complete drawing.
@@ -109,7 +109,7 @@ class BrushSupport(Tool):
                 self._painter.setPen(self._endcap_pen)
                 self._painter.drawEllipse(self._last_x - self.brush_size / 2, self._last_y - self.brush_size / 2, self.brush_size, self.brush_size) #Paint another ellipse when you're releasing as endcap.
                 self._painter = None
-            #QtApplication.getInstance().getController().getView("SolidView").setExtraOverhang(self._draw_buffer)
+            QtApplication.getInstance().getController().getView("SolidView").setExtraOverhang(self._draw_buffer)
             self._constructSupport(self._draw_buffer) #Actually place the support.
             self._resetDrawBuffer()
         elif event.type == Event.MouseMoveEvent and self._painter is not None: #While dragging.
@@ -118,7 +118,7 @@ class BrushSupport(Tool):
             self._painter.drawLine(self._last_x, self._last_y, new_x, new_y)
             self._last_x = new_x
             self._last_y = new_y
-            #QtApplication.getInstance().getController().getView("SolidView").setExtraOverhang(self._draw_buffer)
+            QtApplication.getInstance().getController().getView("SolidView").setExtraOverhang(self._draw_buffer)
 
     try:
         _basestring = basestring
